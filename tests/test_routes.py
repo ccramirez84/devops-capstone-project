@@ -21,7 +21,7 @@ BASE_URL = "/accounts"
 
 
 ######################################################################
-#  T E S T   C A S E S
+# T E S T C A S E S
 ######################################################################
 class TestAccountService(TestCase):
     """Account Service Tests"""
@@ -51,7 +51,7 @@ class TestAccountService(TestCase):
         db.session.remove()
 
     ######################################################################
-    #  H E L P E R   M E T H O D S
+    # H E L P E R M E T H O D S
     ######################################################################
 
     def _create_accounts(self, count):
@@ -71,7 +71,7 @@ class TestAccountService(TestCase):
         return accounts
 
     ######################################################################
-    #  A C C O U N T   T E S T   C A S E S
+    # A C C O U N T T E S T C A S E S
     ######################################################################
 
     def test_index(self):
@@ -122,5 +122,86 @@ class TestAccountService(TestCase):
             content_type="test/html"
         )
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    # T E S T R E A D A C C O U N T
+    
+    def test_get_account(self):
+        """It should Read a single Account"""
+        # Crea una cuenta y la guarda usando el helper para obtener un ID válido
+        account = self._create_accounts(1)[0]
+        resp = self.client.get(f"{BASE_URL}/{account.id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["name"], account.name)
+
+    def test_get_account_not_found(self):
+        """It should not Read an Account that is not found"""
+        resp = self.client.get(f"{BASE_URL}/0") # El ID 0 nunca debería existir
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    #
+    # T E S T L I S T A C C O U N T S
+    #
+
+    def test_list_accounts(self):
+        """It should Get a list of Accounts"""
+        count = 5
+        self._create_accounts(count)
+        resp = self.client.get(BASE_URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(len(data), count)
+        
+    #
+    # T E S T U P D A T E A C C O U N T
+    #
+
+    def test_update_account(self):
+        """It should Update an existing Account"""
+        # 1. Crear una cuenta base
+        test_account = self._create_accounts(1)[0]
+        original_id = test_account.id
+
+        # 2. Definir los nuevos datos
+        new_phone = "555-555-1212"
+        test_account.phone_number = new_phone
+        new_name = "Gandalf The Gray"
+        test_account.name = new_name
+        
+        # 3. Llamar al endpoint PUT
+        resp = self.client.put(
+            f"{BASE_URL}/{test_account.id}",
+            json=test_account.serialize(),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        # 4. Verificar que los datos de la respuesta son correctos
+        updated_account = resp.get_json()
+        self.assertEqual(updated_account["name"], new_name)
+        self.assertEqual(updated_account["phone_number"], new_phone)
+        self.assertEqual(updated_account["id"], original_id) # El ID no debe cambiar
+
+        # 5. Verificar que el cambio se haya guardado en la BD (usando GET)
+        resp = self.client.get(f"{BASE_URL}/{test_account.id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["name"], new_name)
+
+    def test_update_account_not_found(self):
+        """It should not Update an Account that is not found"""
+        account = AccountFactory()
+        resp = self.client.put(
+            f"{BASE_URL}/0", # ID que no existe
+            json=account.serialize(),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_account_unsupported_media_type(self):
+        """It should not Update an Account when sending the wrong media type"""
+        # El test debe fallar con 415 si el tipo de contenido no es JSON
+        resp = self.client.put(f"{BASE_URL}/1", data="<xml>data</xml>", content_type="application/xml")
+        self.assertEqual(resp.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     # ADD YOUR TEST CASES HERE ...
