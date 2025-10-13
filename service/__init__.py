@@ -6,7 +6,8 @@ and SQL database
 """
 import sys
 from flask import Flask
-from flask_talisman import Talisman # Asegura la importación de Talisman
+from flask_talisman import Talisman
+from flask_cors import CORS # Importar CORS
 from service import config
 from service.common import log_handlers
 
@@ -15,7 +16,12 @@ app = Flask(__name__)
 app.config.from_object(config)
 
 # Initialize Talisman to add security headers
-talisman = Talisman(app) # Asegura la definición de la variable 'talisman'
+# Talisman se configura aquí para aplicar los encabezados CSP
+talisman = Talisman(app, content_security_policy_nonce_in=['style-src', 'script-src'])
+
+# Inicializar CORS
+# CORS(app) activa el encabezado Access-Control-Allow-Origin: * por defecto
+cors = CORS(app) 
 
 # Import the routes After the Flask app is created
 # pylint: disable=wrong-import-position, cyclic-import, wrong-import-order
@@ -28,7 +34,7 @@ from service.common import error_handlers, cli_commands  # noqa: F401 E402
 log_handlers.init_logging(app, "gunicorn.error")
 
 app.logger.info(70 * "*")
-app.logger.info("  A C C O U N T   S E R V I C E   R U N N I N G  ".center(70, "*"))
+app.logger.info("  A C C O U N T   S E R V I C E   R U N N I N G   ".center(70, "*"))
 app.logger.info(70 * "*")
 
 try:

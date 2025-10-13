@@ -102,6 +102,13 @@ class TestAccountService(TestCase):
         for key, value in headers.items():
             self.assertEqual(response.headers.get(key), value)
 
+    def test_cors_security(self):
+        """Debería devolver un encabezado CORS"""
+        response = self.client.get('/', environ_overrides=HTTPS_ENVIRON)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verificar el encabezado CORS
+        self.assertEqual(response.headers.get('Access-Control-Allow-Origin'), '*')
+
     def test_create_account(self):
         """It should Create a new Account"""
         account = AccountFactory()
@@ -219,5 +226,3 @@ class TestAccountService(TestCase):
         # El test debe fallar con 415 si el tipo de contenido no es JSON
         resp = self.client.put(f"{BASE_URL}/1", data="<xml>data</xml>", content_type="application/xml")
         self.assertEqual(resp.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-
-    # ADD YOUR TEST CASES HERE ...
