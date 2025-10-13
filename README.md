@@ -131,3 +131,7 @@ You can now perform Tekton development locally, just like in the Cloud IDE lab e
 Licensed under the Apache License. See [LICENSE](LICENSE)
 
 ## <h3 align="center"> © IBM Corporation 2022. All rights reserved. <h3/>
+
+![Estado de la Construcción](https://github.com/ccramirez84/devops-capstone-project/actions/workflows/ci-build.yaml/badge.svg)
+
+Ahora tu `README.md` mostrará automáticamente si tu CI está pasando o fallando en GitHub. ¿Hay algo más que te gustaría agregar a este documento?

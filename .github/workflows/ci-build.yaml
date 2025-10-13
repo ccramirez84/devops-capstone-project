@@ -1,0 +1,87 @@
+# Nombre del flujo de trabajo visible en GitHub Actions
+name: CI Build
+
+# Define los eventos que activan este flujo de trabajo
+on:
+  push:
+    branches: [ main ] # Se activa cuando hay un push a la rama main
+  pull_request:
+    branches: [ main ] # Se activa cuando se crea o actualiza un PR a la rama main
+
+# Define un único job (trabajo) que se ejecutará
+jobs:
+  build:
+    # 1. El trabajo se ejecutará en el sistema operativo ubuntu-latest (host)
+    runs-on: ubuntu-latest
+    
+    # 2. Define la imagen Docker del contenedor donde se ejecutarán todos los pasos
+    container:
+      image: python:3.9-slim
+      
+    # 3. Define los servicios Docker que se iniciarán junto al contenedor principal
+    services:
+      postgres:
+        # Usa la imagen ligera, como en el Makefile de referencia
+        image: postgres:alpine
+        
+        # Mapea el puerto 5432 del servicio al contenedor principal
+        ports:
+          - 5432:5432 
+          
+        # Variables de entorno para configurar la base de datos
+        env:
+          POSTGRES_PASSWORD: pgs3cr3t
+          POSTGRES_DB: testdb
+          
+        # Opciones para verificar el estado de salud del servicio antes de iniciar el job
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    # ----------------------------------------------------
+    # Paso 1: Checkout del código del repositorio
+    # ----------------------------------------------------
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    # ----------------------------------------------------
+    # Paso 2: Install dependencies
+    # Se recomienda instalar todas las dependencias (incluyendo herramientas de prueba) aquí.
+    # ----------------------------------------------------
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip wheel
+        pip3 install -r requirements.txt
+        # Instalación explícita de herramientas de prueba y linting
+        pip3 install flake8 psycopg2-binary nosetests coverage
+        
+    # ----------------------------------------------------
+    # Paso 3: Lint con flake8
+    # ----------------------------------------------------
+    - name: Lint con flake8
+      run: |
+        flake8 service --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 service --count --max-complexity=10 --max-line-length=127 --statistics
+        
+    # ----------------------------------------------------
+    # Paso 4: Ejecutar pruebas unitarias con Nose
+    # Se usa la URI de la BD y los comandos completos de nose para cobertura.
+    # ----------------------------------------------------
+    - name: Ejecutar pruebas unitarias con Nose
+      # Se define la URI de la BD usando el nombre del servicio ('postgres') como host
+      env:
+        DATABASE_URI: postgresql://postgres:pgs3cr3t@postgres:5432/testdb
+      run: nosetests -v --with-spec --spec-color --with-coverage --cover-package=service
+        
+    # ----------------------------------------------------
+    # Paso 5: Genera el informe de cobertura HTML (opcional pero útil)
+    # ----------------------------------------------------
+    - name: Upload Coverage HTML Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-py3.9
+        path: cover/
+        if-no-files-found: warn
