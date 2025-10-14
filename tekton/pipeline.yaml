@@ -1,38 +1,96 @@
-#
-# This pipeline needs the following tasks from Tekton Hub
-#   - git-clone
-#   - flake8
-#
----
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
-metadata:  
+metadata:
   name: cd-pipeline
 spec:
-  workspaces:
-    - name: pipeline-workspace
   params:
     - name: repo-url
+      type: string
+      description: URL del repositorio Git
     - name: branch
+      type: string
+      description: Rama a clonar
       default: main
+    - name: image-repo
+      type: string
+      description: Repositorio de destino de la imagen 
+    - name: image-tag
+      type: string
+      description: Etiqueta de la imagen
+      default: "1"
+  workspaces:
+    - name: pipeline-workspace
   tasks:
-    - name: init
-      workspaces:
-        - name: source
-          workspace: pipeline-workspace          
-      taskRef:
-        name: cleanup
-
-    - name: clone
-      workspaces:
-        - name: output
-          workspace: pipeline-workspace          
-      taskRef:
-        name: git-clone
-      params:
+    # 1. Tarea: Clonar el Repositorio
+  - name: clone
+    taskRef:
+      name: git-clone
+    params:
       - name: url
         value: $(params.repo-url)
       - name: revision
         value: $(params.branch)
-      runAfter:
-        - init
+    workspaces:
+      - name: output
+        workspace: pipeline-workspace
+        
+    # 2. Tarea: Linting (flake8)
+  - name: lint
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+    taskRef:
+      name: flake8
+    params:
+    - name: image
+      value: "python:3.9-slim"
+    - name: args
+      value: ["--count","--max-complexity=10","--max-line-length=127","--statistics"]
+    runAfter:
+      - clone
+      
+    # 3. Tarea: Pruebas Unitarias
+  - name: unit-test
+    taskRef:
+      name: unit-tests
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+    runAfter:
+      - lint # Se ejecuta después del linting
+      
+    # 4. Tarea: Construcción y Empuje de Imagen (Usando Kaniko, definido en tekton/tasks.yaml)
+  - name: build-image
+    taskRef:
+      name: buildah # Usamos el nombre 'buildah' por compatibilidad con el pipeline original
+    params:
+      - name: image-repo
+        value: $(params.image-repo)
+      - name: image-tag
+        value: $(params.image-tag)
+      - name: dockerfile
+        value: ./Dockerfile
+      - name: context
+        value: .
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+      - name: dockerconfig
+        workspace: pipeline-workspace # Asume que las credenciales están en el workspace si se usan
+    runAfter:
+      - unit-test # Solo construye la imagen si las pruebas unitarias pasan
+
+    # 5. Tarea: Despliegue en OpenShift/Kubernetes
+  - name: deploy-app
+    taskRef:
+      name: openshift-deploy
+    params:
+      - name: image-repo
+        value: $(params.image-repo)
+      - name: image-tag
+        value: $(params.image-tag)
+    workspaces:
+      - name: source
+        workspace: pipeline-workspace
+    runAfter:
+      - build-image # Solo despliega si la imagen se construye con éxito
