@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: accounts
+  name: accounts
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: accounts
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: accounts
+    spec:
+      containers:
+      # Se ha reemplazado la variable de shell $SN_ICR_NAMESPACE por el valor literal del namespace.
+      - image: us.icr.io/sn-labs-ccramirez84/accounts:1
+        name: accounts
+        resources: {}
+        # INICIO: Variables de Entorno de la Base de Datos
+        env:
+          - name: DATABASE_HOST
+            value: postgresql  # Nombre del servicio de PostgreSQL
+          - name: DATABASE_NAME
+            valueFrom:
+              secretKeyRef:
+                name: postgresql
+                key: database-name
+          - name: DATABASE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgresql
+                key: database-password
+          - name: DATABASE_USER
+            valueFrom:
+              secretKeyRef:
+                name: postgresql
+                key: database-user
+        # FIN: Variables de Entorno
+status: {}
