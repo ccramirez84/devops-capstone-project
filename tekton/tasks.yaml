@@ -1,137 +1,110 @@
+cat > tekton/tasks.yaml <<'YAML'
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: flake8-run
+spec:
+  description: "Instala flake8 y ejecuta lint sobre el workspace."
+  workspaces:
+    - name: source
+      description: "Código fuente a analizar"
+  params:
+    - name: image
+      type: string
+      description: "Imagen base de Python"
+      default: "python:3.9-slim"
+    - name: args
+      type: string
+      description: "Argumentos para flake8"
+      default: "--count --max-complexity=10 --max-line-length=127 --statistics"
+  steps:
+    - name: run-flake8
+      image: $(params.image)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir flake8
+        echo "Ejecutando flake8 con args: $(params.args)"
+        flake8 $(params.args)
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: nose
+spec:
+  description: "Esta tarea ejecutará nosetests en la entrada proporcionada."
+  workspaces:
+    - name: source
+      description: "Código fuente con pruebas"
+  params:
+    - name: args
+      description: "Argumentos a pasar a nose"
+      type: string
+      default: "-v"
+    - name: database_uri
+      description: "Cadena de conexión de la base de datos"
+      type: string
+      default: "sqlite:///test.db"
+  steps:
+    - name: nosetests
+      image: python:3.9-slim
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: DATABASE_URI
+          value: $(params.database_uri)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        python -m pip install --upgrade pip wheel
+        if [[ -f requirements.txt ]]; then
+          echo "Instalando dependencias de requirements.txt..."
+          pip install -qr requirements.txt || true
+        fi
+        # Asegura que nose esté presente
+        pip install -q nose
+        echo "Ejecutando nosetests con args: $(params.args)"
+        nosetests $(params.args)
+
 ---
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: echo
 spec:
-  description: Esta tarea imprime un mensaje en los logs.
+  description: "Imprime un mensaje por pantalla."
   params:
     - name: message
-      description: El mensaje a imprimir
+      description: "Mensaje a imprimir"
       type: string
   steps:
     - name: echo-message
       image: alpine:3
-      command: [/bin/echo]
+      command: ["/bin/echo"]
       args: ["$(params.message)"]
+
 ---
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: cleanup
 spec:
-  description: Esta tarea limpia el contenido del workspace.
+  description: "Limpia el workspace eliminando todos los archivos."
   workspaces:
     - name: source
+      description: "Workspace a limpiar"
   steps:
     - name: remove
       image: alpine:3
-      env:
-        - name: WORKSPACE_SOURCE_PATH
-          value: $(workspaces.source.path)
       workingDir: $(workspaces.source.path)
-      securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
       script: |
         #!/usr/bin/env sh
         set -eu
-        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
-        if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
-          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
-          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
-          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        echo "Removing all files from $(workspaces.source.path) ..."
+        if [ -d "$(workspaces.source.path)" ] ; then
+          rm -rf "$(workspaces.source.path)"/?* "$(workspaces.source.path)"/.[!.]* "$(workspaces.source.path)"/..?* 2>/dev/null || true
         fi
----
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: unit-tests
-spec:
-  description: Ejecuta las pruebas unitarias de Python (nosetests).
-  workspaces:
-    - name: source
-      description: El código fuente del repositorio.
-  steps:
-    - name: run-tests
-      image: python:3.9-slim
-      workingDir: $(workspaces.source.path)
-      # Simula la conexión a la BD requerida por el código de prueba (tests/test_routes.py).
-      env:
-        - name: DATABASE_URI
-          value: "postgresql://postgres:pgs3cr3t@localhost:5432/testdb"
-      script: |
-        #!/usr/bin/env sh
-        set -ex
-        
-        # 1. Instalar dependencias requeridas para las pruebas
-        pip install --no-cache-dir -r requirements.txt
-        pip install nosetests coverage # Asegurar que las herramientas de prueba estén disponibles
-
-        # 2. Ejecutar las pruebas unitarias con cobertura
-        nosetests -v --with-spec --spec-color --with-coverage --cover-package=service
----
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: buildah
-spec:
-  description: Construye una imagen Docker usando buildah y la empuja a un registro.
-  params:
-    - name: image-repo
-      description: URL completa del repositorio de destino (ICR).
-      type: string
-    - name: image-tag
-      description: Etiqueta de la imagen.
-      type: string
-    - name: dockerfile
-      description: Ruta al Dockerfile.
-      type: string
-      default: ./Dockerfile
-    - name: context
-      description: Contexto del directorio para la construcción.
-      type: string
-      default: .
-  workspaces:
-    - name: source
-      description: El código fuente clonado.
-    - name: dockerconfig
-      optional: true
-      description: Credenciales opcionales de Docker para autenticación.
-  steps:
-    - name: build-and-push
-      image: quay.io/buildah/stable:v1.23.3 # Usamos una versión estable y conocida de Buildah
-      workingDir: $(workspaces.source.path)
-      securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
-      script: |
-        #!/usr/bin/env sh
-        set -ex
-        
-        IMAGE_URL="$(params.image-repo):$(params.image-tag)"
-        
-        # 1. Copia el archivo de configuración de Docker (Secret) al lugar correcto
-        # Esto permite que buildah se autentique automáticamente al hacer 'push'.
-        if [ -d "$(workspaces.dockerconfig.path)" ]; then
-            mkdir -p /root/.docker
-            cp "$(workspaces.dockerconfig.path)/.dockerconfigjson" /root/.docker/config.json || true
-        fi
-        
-        # 2. Construir la imagen
-        echo "Building image $IMAGE_URL using context $(params.context) and Dockerfile $(params.dockerfile)"
-        # Ruta absoluta de buildah corregida aquí:
-        /usr/bin/buildah bud \
-          --format=docker \
-          --tls-verify=true \
-          -f "$(params.dockerfile)" \
-          -t "$IMAGE_URL" \
-          "$(params.context)"
-          
-        # 3. Empujar la imagen al registro (ICR)
-        echo "Pushing image $IMAGE_URL to registry"
-        # Ruta absoluta de buildah corregida aquí:
-        /usr/bin/buildah push \
-          --tls-verify=true \
-          "$IMAGE_URL" \
-          "docker://$IMAGE_URL"
+YAML

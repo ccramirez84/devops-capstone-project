@@ -1,0 +1,81 @@
+[clone : clone] + '[' false = true ']'
+[clone : clone] + '[' false = true ']'
+[clone : clone] + '[' false = true ']'
+[clone : clone] + CHECKOUT_DIR=/workspace/output/
+[clone : clone] + '[' true = true ']'
+[clone : clone] + cleandir
+[clone : clone] + '[' -d /workspace/output/ ']'
+[clone : clone] + rm -rf '/workspace/output//*'
+[clone : clone] + rm -rf '/workspace/output//.[!.]*'
+[clone : clone] + rm -rf '/workspace/output//..?*'
+[clone : clone] + test -z ''
+[clone : clone] + test -z ''
+[clone : clone] + test -z ''
+[clone : clone] + git config --global --add safe.directory /workspace/output
+[clone : clone] + /ko-app/git-init -url=https://github.com/ccramirez84/devops-capstone-project.git -revision=cd-pipeline -refspec= -path=/workspace/output/ -sslVerify=true -submodules=true -depth=1 -sparseCheckoutDirectories=
+[clone : clone] {"level":"info","ts":1760492408.234629,"caller":"git/git.go:176","msg":"Successfully cloned https://github.com/ccramirez84/devops-capstone-project.git @ b27508af3547f6cc1f10b7894555a60640b9fb36 (grafted, HEAD, origin/cd-pipeline) in path /workspace/output/"}
+[clone : clone] {"level":"info","ts":1760492408.3387177,"caller":"git/git.go:215","msg":"Successfully initialized and updated submodules in path /workspace/output/"}
+[clone : clone] + cd /workspace/output/
+[clone : clone] ++ git rev-parse HEAD
+[clone : clone] + RESULT_SHA=b27508af3547f6cc1f10b7894555a60640b9fb36
+[clone : clone] + EXIT_CODE=0
+[clone : clone] + '[' 0 '!=' 0 ']'
+[clone : clone] ++ git log -1 --pretty=%ct
+[clone : clone] + RESULT_COMMITTER_DATE=1760405864
+[clone : clone] + printf %s 1760405864
+[clone : clone] + printf %s b27508af3547f6cc1f10b7894555a60640b9fb36
+[clone : clone] + printf %s https://github.com/ccramirez84/devops-capstone-project.git
+
+[lint : run-flake8] Requirement already satisfied: pip in /usr/local/lib/python3.9/site-packages (23.0.1)
+[lint : run-flake8] Collecting pip
+[lint : run-flake8]   Downloading pip-25.2-py3-none-any.whl (1.8 MB)
+[lint : run-flake8]      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 24.4 MB/s eta 0:00:00
+[lint : run-flake8] Installing collected packages: pip
+[lint : run-flake8]   Attempting uninstall: pip
+[lint : run-flake8]     Found existing installation: pip 23.0.1
+[lint : run-flake8]     Uninstalling pip-23.0.1:
+[lint : run-flake8]       Successfully uninstalled pip-23.0.1
+[lint : run-flake8] Successfully installed pip-25.2
+[lint : run-flake8] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[lint : run-flake8] Collecting flake8
+[lint : run-flake8]   Downloading flake8-7.3.0-py2.py3-none-any.whl.metadata (3.8 kB)
+[lint : run-flake8] Collecting mccabe<0.8.0,>=0.7.0 (from flake8)
+[lint : run-flake8]   Downloading mccabe-0.7.0-py2.py3-none-any.whl.metadata (5.0 kB)
+[lint : run-flake8] Collecting pycodestyle<2.15.0,>=2.14.0 (from flake8)
+[lint : run-flake8]   Downloading pycodestyle-2.14.0-py2.py3-none-any.whl.metadata (4.5 kB)
+[lint : run-flake8] Collecting pyflakes<3.5.0,>=3.4.0 (from flake8)
+[lint : run-flake8]   Downloading pyflakes-3.4.0-py2.py3-none-any.whl.metadata (3.5 kB)
+[lint : run-flake8] Downloading flake8-7.3.0-py2.py3-none-any.whl (57 kB)
+[lint : run-flake8] Downloading mccabe-0.7.0-py2.py3-none-any.whl (7.3 kB)
+[lint : run-flake8] Downloading pycodestyle-2.14.0-py2.py3-none-any.whl (31 kB)
+[lint : run-flake8] Downloading pyflakes-3.4.0-py2.py3-none-any.whl (63 kB)
+[lint : run-flake8] Installing collected packages: pyflakes, pycodestyle, mccabe, flake8
+[lint : run-flake8] 
+[lint : run-flake8] Successfully installed flake8-7.3.0 mccabe-0.7.0 pycodestyle-2.14.0 pyflakes-3.4.0
+[lint : run-flake8] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+[lint : run-flake8] Ejecutando flake8 con args: --count --max-complexity=10 --max-line-length=127 --statistics
+[lint : run-flake8] 0
+
+[tests : nosetests] Requirement already satisfied: pip in /usr/local/lib/python3.9/site-packages (23.0.1)
+[tests : nosetests] Collecting pip
+[tests : nosetests]   Downloading pip-25.2-py3-none-any.whl (1.8 MB)
+[tests : nosetests]      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 68.2 MB/s eta 0:00:00
+[tests : nosetests] Requirement already satisfied: wheel in /usr/local/lib/python3.9/site-packages (0.44.0)
+[tests : nosetests] Collecting wheel
+[tests : nosetests]   Downloading wheel-0.45.1-py3-none-any.whl (72 kB)
+[tests : nosetests]      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 72.5/72.5 kB 21.5 MB/s eta 0:00:00
+[tests : nosetests] Installing collected packages: wheel, pip
+[tests : nosetests]   Attempting uninstall: wheel
+[tests : nosetests]     Found existing installation: wheel 0.44.0
+[tests : nosetests]     Uninstalling wheel-0.44.0:
+[tests : nosetests]       Successfully uninstalled wheel-0.44.0
+[tests : nosetests]   Attempting uninstall: pip
+[tests : nosetests]     Found existing installation: pip 23.0.1
+[tests : nosetests]     Uninstalling pip-23.0.1:
+[tests : nosetests]       Successfully uninstalled pip-23.0.1
+[tests : nosetests] Successfully installed pip-25.2 wheel-0.45.1
+[tests : nosetests] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[tests : nosetests] AVISO: requirements.txt no encontrado, instalando nose por defecto...
+[tests : nosetests] ERROR: Could not find a version that satisfies the requirement nose-spec (from versions: none)
+[tests : nosetests] ERROR: No matching distribution found for nose-spec
+

@@ -1,3 +1,4 @@
+cat > tekton/pipeline.yaml <<'YAML'
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
@@ -6,91 +7,102 @@ spec:
   params:
     - name: repo-url
       type: string
-      description: URL del repositorio Git
+      description: "La URL del repositorio Git a clonar."
     - name: branch
       type: string
-      description: Rama a clonar
+      description: "La rama del repositorio a clonar."
       default: main
-    - name: image-repo
+    - name: build-image
       type: string
-      description: Repositorio de destino de la imagen 
-    - name: image-tag
+      description: "Nombre completo de la imagen a construir (ej: image-registry.openshift-image-registry.svc:5000/$SN_ICR_NAMESPACE/accounts:1)"
+    - name: database-uri
       type: string
-      description: Etiqueta de la imagen
-      default: "1"
+      description: "URI de base de datos para las pruebas (nose)."
+      default: "sqlite:///test.db"
+
   workspaces:
     - name: pipeline-workspace
-  tasks:
-    # 1. Tarea: Clonar el Repositorio
-  - name: clone
-    taskRef:
-      name: git-clone
-    params:
-      - name: url
-        value: $(params.repo-url)
-      - name: revision
-        value: $(params.branch)
-    workspaces:
-      - name: output
-        workspace: pipeline-workspace
-        
-    # 2. Tarea: Linting (flake8)
-  - name: lint
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-    taskRef:
-      name: flake8
-    params:
-    - name: image
-      value: "python:3.9-slim"
-    - name: args
-      value: ["--count","--max-complexity=10","--max-line-length=127","--statistics"]
-    runAfter:
-      - clone
-      
-    # 3. Tarea: Pruebas Unitarias
-  - name: unit-test
-    taskRef:
-      name: unit-tests
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-    runAfter:
-      - lint # Se ejecuta después del linting
-      
-    # 4. Tarea: Construcción y Empuje de Imagen (Usando Kaniko, definido en tekton/tasks.yaml)
-  - name: build-image
-    taskRef:
-      name: buildah # Usamos el nombre 'buildah' por compatibilidad con el pipeline original
-    params:
-      - name: image-repo
-        value: $(params.image-repo)
-      - name: image-tag
-        value: $(params.image-tag)
-      - name: dockerfile
-        value: ./Dockerfile
-      - name: context
-        value: .
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-      - name: dockerconfig
-        workspace: pipeline-workspace # Asume que las credenciales están en el workspace si se usan
-    runAfter:
-      - unit-test # Solo construye la imagen si las pruebas unitarias pasan
+      description: "Espacio de trabajo compartido para el repositorio clonado y manifiestos."
 
-    # 5. Tarea: Despliegue en OpenShift/Kubernetes
-  - name: deploy-app
-    taskRef:
-      name: openshift-deploy
-    params:
-      - name: image-repo
-        value: $(params.image-repo)
-      - name: image-tag
-        value: $(params.image-tag)
-    workspaces:
-      - name: source
-        workspace: pipeline-workspace
-    runAfter:
-      - build-image # Solo despliega si la imagen se construye con éxito
+  tasks:
+    - name: clone
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: pipeline-workspace
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.branch)
+
+    - name: lint
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+      taskRef:
+        name: flake8-run
+      params:
+        - name: image
+          value: "python:3.9-slim"
+        - name: args
+          value: "--count --max-complexity=10 --max-line-length=127 --statistics"
+
+    - name: tests
+      runAfter:
+        - clone
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+      taskRef:
+        name: nose
+      params:
+        - name: database_uri
+          value: "$(params.database-uri)"
+        - name: args
+          value: "-v"
+
+    # Build con Dockerfile en la RAÍZ del repo
+    - name: build
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+      taskRef:
+        name: buildah
+        kind: ClusterTask
+      params:
+        - name: IMAGE
+          value: "$(params.build-image)"
+        - name: DOCKERFILE
+          value: Dockerfile
+        - name: CONTEXT
+          value: .
+      runAfter:
+        - tests
+        - lint
+
+    - name: deploy
+      workspaces:
+        - name: manifest-dir
+          workspace: pipeline-workspace
+      taskRef:
+        name: openshift-client
+        kind: ClusterTask
+      params:
+        - name: SCRIPT
+          value: |
+            echo "Actualizando manifiesto..."
+            sed -i "s|IMAGE_NAME_HERE|$(params.build-image)|g" deploy/deployment.yaml
+            echo "Manifiesto resultante:"
+            cat deploy/deployment.yaml || true
+            echo "Desplegando en OpenShift..."
+            oc apply -f deploy/
+            echo "Pods de la app con label app=accounts:"
+            oc get pods -l app=accounts
+      runAfter:
+        - build
+YAML
