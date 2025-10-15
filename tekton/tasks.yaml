@@ -2,51 +2,194 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: echo
+  name: flake8-run-git
 spec:
-  description: This task will echo the message.
+  description: "Clona el repo y ejecuta flake8 en el workspace (sin PVC)."
   params:
-    - name: message
-      description: The message to echo
+    - name: repo-url
       type: string
+      description: URL del repositorio a clonar
+    - name: branch
+      type: string
+      description: Rama a clonar
+      default: main
+    - name: image
+      type: string
+      default: "python:3.9-slim"
+    - name: args
+      type: string
+      # --exit-zero para no bloquear el pipeline por lint
+      default: "--count --max-complexity=10 --max-line-length=127 --statistics --exit-zero"
+  workspaces:
+    - name: source
+      description: Workspace efímero (emptyDir)
   steps:
-    - name: echo-message
-      image: alpine:3
-      command: [/bin/echo]
-      args: ["$(params.message)"]
+    - name: init
+      image: $(params.image)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        apt-get update -y && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+        git clone --depth 1 --branch "$(params.branch)" "$(params.repo-url)" .
+    - name: run-flake8
+      image: $(params.image)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir flake8
+        echo "Ejecutando flake8 con args: $(params.args)"
+        flake8 $(params.args)
+
 ---
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: cleanup
+  name: nose-git
 spec:
-  description: This task will clean up a workspace by deleting all of the files.
+  description: "Clona el repo y ejecuta nosetests (sin PVC)."
+  params:
+    - name: repo-url
+      type: string
+    - name: branch
+      type: string
+      default: main
+    - name: args
+      type: string
+      default: "-v"
+    - name: database_uri
+      type: string
+      default: "sqlite:///test.db"
   workspaces:
     - name: source
   steps:
-    - name: remove
-      image: alpine:3
-      env:
-        - name: WORKSPACE_SOURCE_PATH
-          value: $(workspaces.source.path)
+    - name: init
+      image: python:3.9-slim
       workingDir: $(workspaces.source.path)
-      securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
+      env:
+        - name: DATABASE_URI
+          value: $(params.database_uri)
       script: |
-        #!/usr/bin/env sh
-        set -eu
-        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
-        # Delete any existing contents of the directory if it exists.
-        #
-        # We don't just "rm -rf ${WORKSPACE_SOURCE_PATH}" because ${WORKSPACE_SOURCE_PATH} might be "/"
-        # or the root of a mounted volume.
-        if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
-          # Delete non-hidden files and directories
-          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
-          # Delete files and directories starting with . but excluding ..
-          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
-          # Delete files and directories starting with .. plus any other character
-          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        #!/usr/bin/env bash
+        set -euo pipefail
+        apt-get update -y && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+        git clone --depth 1 --branch "$(params.branch)" "$(params.repo-url)" .
+        python -m pip install --upgrade pip wheel
+        if [[ -f requirements.txt ]]; then
+          pip install -qr requirements.txt || true
         fi
+        pip install -q nose nose2 coverage
+        echo "Ejecutando nosetests con args: $(params.args)"
+        nosetests $(params.args)
 
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: buildah-git
+spec:
+  description: "Clona el repo y construye/push la imagen con Buildah sin privilegios (vfs+chroot)."
+  params:
+    - name: repo-url
+      type: string
+    - name: branch
+      type: string
+      default: main
+    - name: image
+      type: string
+      description: "Destino completo de la imagen (registry/namespace/name:tag)"
+    - name: dockerfile
+      type: string
+      default: "Dockerfile"
+    - name: context
+      type: string
+      default: "."
+    - name: tlsverify
+      type: string
+      default: "false"
+    - name: storageDriver
+      type: string
+      default: "vfs"
+  workspaces:
+    - name: source
+      description: Workspace efímero
+  steps:
+    # 1) Clonar el repositorio con una imagen que ya trae git
+    - name: clone
+      image: alpine/git:2.43.0
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -eu
+        git clone --depth 1 --branch "$(params.branch)" "$(params.repo-url)" .
+        echo "Repo clonado en $(pwd)"
+        ls -la
+
+    # 2) Build + Push con Buildah rootless (sin privileged, sin microdnf)
+    - name: build-and-push
+      image: registry.redhat.io/rhel8/buildah:latest
+      env:
+        - name: STORAGE_DRIVER
+          value: $(params.storageDriver)
+        - name: BUILDAH_ISOLATION
+          value: chroot
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        echo "Contenido del contexto:"
+        ls -la
+        echo "Construyendo imagen: $(params.image)"
+        buildah bud \
+          --format oci \
+          --storage-driver="${STORAGE_DRIVER}" \
+          --tls-verify=$(params.tlsverify) \
+          -f "$(params.dockerfile)" \
+          -t "$(params.image)" \
+          "$(params.context)"
+        echo "Pushing..."
+        buildah push --tls-verify=$(params.tlsverify) "$(params.image)"
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: openshift-deploy-git
+spec:
+  description: "Clona el repo y aplica manifests con oc (sin PVC)."
+  params:
+    - name: repo-url
+      type: string
+    - name: branch
+      type: string
+      default: main
+    - name: build-image
+      type: string
+      description: "Nombre de imagen para reemplazar en deployment.yaml"
+  workspaces:
+    - name: source
+  steps:
+    # 1) Clonar manifests con imagen que trae git
+    - name: clone
+      image: alpine/git:2.43.0
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -eu
+        git clone --depth 1 --branch "$(params.branch)" "$(params.repo-url)" .
+        ls -la
+
+    # 2) Aplicar con oc
+    - name: oc-apply
+      image: registry.redhat.io/openshift4/ose-cli:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        test -d deploy || { echo "No existe deploy/ en el repo"; exit 1; }
+        test -f deploy/deployment.yaml || { echo "No existe deploy/deployment.yaml"; exit 1; }
+        echo "Actualizando imagen en deployment.yaml..."
+        sed -i "s|IMAGE_NAME_HERE|$(params
+::contentReference[oaicite:0]{index=0}
